@@ -1,0 +1,5 @@
+hopsworks[python]
+requests
+pandas
+python-dotenv
+scikit-learn
