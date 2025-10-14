@@ -1,71 +1,80 @@
-# feature_engineering.py
-
 import hopsworks
 import pandas as pd
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+PROJECT_NAME = "pearls_aqi_predictor"
+AIR_RAW_FG = "karachi_air_quality_raw"
+WEATHER_RAW_FG = "karachi_weather_raw"
+FEATURE_FG = "karachi_air_quality_features"
 
-# -------------------- Hopsworks Login --------------------
+print("Connecting to Hopsworks...")
 project = hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
 fs = project.get_feature_store()
 
-# -------------------- Load Raw Data --------------------
-print("Fetching raw data from Feature Store...")
-raw_fg = fs.get_feature_group("karachi_air_quality_raw", version=1)
-df = raw_fg.read()
-df = df.sort_values("timestamp").reset_index(drop=True)
-print(f"Loaded {len(df)} records from raw feature group.")
+print("Fetching raw feature groups...")
+air_df = fs.get_feature_group(AIR_RAW_FG, version=1).read()
+weather_df = fs.get_feature_group(WEATHER_RAW_FG, version=1).read()
 
-# -------------------- Feature Engineering --------------------
-df["hour"] = df["timestamp"].dt.hour
-df["day"] = df["timestamp"].dt.day
-df["month"] = df["timestamp"].dt.month
-df["dayofweek"] = df["timestamp"].dt.dayofweek
-df["is_weekend"] = df["dayofweek"].isin([5, 6]).astype(int)
+print(f"Air data: {air_df.shape} | Weather data: {weather_df.shape}")
 
-# Cyclic encoding
-df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-df["day_sin"] = np.sin(2 * np.pi * df["dayofweek"] / 7)
-df["day_cos"] = np.cos(2 * np.pi * df["dayofweek"] / 7)
+# --- Time alignment ---
+air_df["timestamp"] = pd.to_datetime(air_df["timestamp"]).dt.round("H")
+weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"]).dt.round("H")
 
-pollutants = ["co", "no", "no2", "o3", "so2", "pm2_5", "pm10", "nh3"]
+merged_df = pd.merge_asof(
+    air_df.sort_values("timestamp"),
+    weather_df.sort_values("timestamp"),
+    on="timestamp",
+    direction="nearest",
+    tolerance=pd.Timedelta("1h")
+).dropna()
 
-# Rolling window features
-for col in pollutants:
-    df[f"{col}_rolling_mean_3"] = df[col].rolling(window=3).mean()
-    df[f"{col}_rolling_std_3"] = df[col].rolling(window=3).std()
+# --- Feature engineering ---
+merged_df["hour"] = merged_df["timestamp"].dt.hour
+merged_df["day"] = merged_df["timestamp"].dt.day
+merged_df["month"] = merged_df["timestamp"].dt.month
+merged_df["dayofweek"] = merged_df["timestamp"].dt.dayofweek
+merged_df["is_weekend"] = (merged_df["dayofweek"] >= 5).astype(int)
 
-# Lag features
-for col in ["aqi", "pm2_5", "pm10"]:
-    df[f"{col}_lag_1"] = df[col].shift(1)
-    df[f"{col}_lag_3"] = df[col].shift(3)
-    df[f"{col}_lag_6"] = df[col].shift(6)
+import numpy as np
+merged_df["hour_sin"] = np.sin(2 * np.pi * merged_df["hour"] / 24)
+merged_df["hour_cos"] = np.cos(2 * np.pi * merged_df["hour"] / 24)
+merged_df["day_sin"] = np.sin(2 * np.pi * merged_df["day"] / 31)
+merged_df["day_cos"] = np.cos(2 * np.pi * merged_df["day"] / 31)
 
-# Ratio features
-df["pm_ratio"] = df["pm2_5"] / (df["pm10"] + 1e-5)
-df["no2_to_o3_ratio"] = df["no2"] / (df["o3"] + 1e-5)
+for col in ["co","no","no2","o3","so2","pm2_5","pm10","nh3"]:
+    merged_df[f"{col}_rolling_mean_3"] = merged_df[col].rolling(3, min_periods=1).mean()
+    merged_df[f"{col}_rolling_std_3"] = merged_df[col].rolling(3, min_periods=1).std()
 
-# Drop missing values (caused by rolling/lag)
-df = df.dropna().reset_index(drop=True)
+for col in ["aqi","pm2_5","pm10"]:
+    for lag in [1,3,6]:
+        merged_df[f"{col}_lag_{lag}"] = merged_df[col].shift(lag)
 
-# Scale pollutants
-scaler = StandardScaler()
-df[pollutants] = scaler.fit_transform(df[pollutants])
+merged_df["no2_to_o3_ratio"] = merged_df["no2"] / (merged_df["o3"] + 1e-6)
+merged_df["no2_to_so2"] = merged_df["no2"] / (merged_df["so2"] + 1e-6)
+merged_df["temp_humidity_index"] = merged_df["temperature"] * merged_df["humidity"] / 100
+merged_df["pressure_change"] = merged_df["pressure"].diff()
+merged_df["rolling_pm2_5"] = merged_df["pm2_5"].rolling(3, min_periods=1).mean()
+merged_df["rolling_temp"] = merged_df["temperature"].rolling(3, min_periods=1).mean()
 
-print("Feature engineering complete.")
+merged_df.dropna(inplace=True)
+print(f"Final engineered dataset shape: {merged_df.shape}")
 
-# -------------------- Store Engineered Features --------------------
-fg_features = fs.get_or_create_feature_group(
-    name="karachi_air_quality_features",
+try:
+    fs.get_feature_group(FEATURE_FG, version=1).delete()
+    print(" Old feature group deleted.")
+except Exception:
+    print("No previous feature group found (fresh creation).")
+
+feature_fg = fs.create_feature_group(
+    name=FEATURE_FG,
     version=1,
+    description="Combined and engineered weather + air pollution features for AQI prediction",
     primary_key=["timestamp"],
-    description="Engineered air quality features for Karachi (with rolling, lag, cyclic time, ratios)"
+    online_enabled=False
 )
 
-fg_features.insert(df)
-print("Engineered features stored in Feature Group: karachi_air_quality_features")
+feature_fg.insert(merged_df)
+print("Engineered features stored successfully!")
+
+print(f"Explore it here: {project.get_url()}/fs/{fs._id}/fg/{feature_fg._id}")
