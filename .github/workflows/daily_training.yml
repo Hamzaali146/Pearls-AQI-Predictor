@@ -1,0 +1,49 @@
+name: Daily Model Training
+
+on:
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run training script
+        env:
+          # Optional secrets to allow Hopsworks authentication from the script
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT: ${{ secrets.HOPSWORKS_PROJECT }}
+          HOPSWORKS_URL: ${{ secrets.HOPSWORKS_URL }}
+          OPENWEATHER_API_KEY : ${{ secrets.OPENWEATHER_API_KEY }}
+
+        run: |
+          echo "Running train.py"
+          python train.py
+
+      - name: List repo root files (debug)
+        run: ls -la || true
+
+      - name: Upload model artifacts (if produced)
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-artifacts
+          path: |
+            model.pkl
+            feature_columns.json
+        # If artifacts are not produced, don't fail the workflow
+        continue-on-error: true
