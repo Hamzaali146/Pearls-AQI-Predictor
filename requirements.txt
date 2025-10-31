@@ -3,3 +3,8 @@ requests
 pandas
 python-dotenv
 scikit-learn
+joblib
+fastapi
+uvicorn
+streamlit
+gradio
