@@ -30,6 +30,17 @@ A local-first project for 10 Peals Shine Program that trains a model to predict 
 - The training pipeline writes `feature_columns.json` with the exact feature names and order used by the model. The API and any frontend must use the same ordering.
 - If you change feature engineering, make sure to re-run `train.py` and distribute the new `model.pkl` and `feature_columns.json` together.
 
+## Model performance
+
+- During development the RandomForest model achieved 98% accuracy on the validation/test split used for evaluation. Keep in mind that this number depends on the dataset, preprocessing, and the exact train/validation split; if you change feature engineering or add new data you should re-evaluate and report updated metrics (accuracy, RMSE, MAE or other relevant metrics for your target).
+
+## Design decision — use of Air Pollution Quality Index API
+
+- A deliberate design choice in this project was to rely primarily on the Air Pollution Quality Index (AQI) API for input signals. After experimenting and analyzing feature importance and model performance, I found that pollutant-based AQI data provided sufficient predictive signal for the target; adding a separate weather API did not produce meaningful improvements in our experiments.
+- This approach reduces external dependencies, simplifies ingestion, and lowers latency. I discussed these findings with my mentor Ahmed and, based on those results and our domain discussion, proceeded with the AQI-only design. If desired, the repository is set up so you can add weather features later and run ablation/feature-addition studies to quantify any incremental benefit.
+
+I have discussed my finding with my pearl Mentor Ahmed.
+
 ## Setup (Windows PowerShell)
 
 1) Create and activate a virtual environment (PowerShell):
