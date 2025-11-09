@@ -1,56 +1,139 @@
-# Pearls AQI Predictor — Local demo
+# Pearls AQI Predictor
 
-This workspace contains training, a prediction API, and two simple frontends (Streamlit and Gradio) for the AQI predictor.
+A local-first project that trains a model to predict Air Quality Index (AQI) related targets from engineered features, exposes a prediction API, and provides simple frontends for exploration and demo (Streamlit). The codebase is structured to work locally and to be adaptable to production (feature store, CI scheduled retraining, and containerization).
 
-Files added/changed by this update:
-- `train.py` — trains RandomForest, saves `model.pkl` and `feature_columns.json`, falls back to local CSV if Feature Store unavailable.
-- `app/api.py` — FastAPI app exposing `/predict` (POST) and `/predict/latest` (GET).
-- `app/streamlit_app.py` — Streamlit dashboard that shows recent rows and predictions.
-- `app/gradio_app.py` — Gradio demo that accepts JSON feature mappings and returns a prediction.
-- `requirements.txt` — appended packages required for running the apps.
+## Quick summary
 
-Quick start (local):
+- Purpose: Train an ML model that predicts AQI-related target(s) from weather and pollutant features, and provide a lightweight API + UI for inference.
+- Main components: data ingestion/feature engineering, training pipeline, FastAPI prediction service, Streamlit demo UI.
+- Intended users: data scientists experimenting locally, ML engineers preparing a small model service for deployment.
 
-1) Create / activate Python environment (Windows PowerShell):
+## Contract (short)
+
+- Inputs: JSON or CSV rows containing the feature set documented in `feature_columns.json`.
+- Output: Predicted AQI (or related target) as a numeric value and optional metadata (model version, timestamp).
+- Error modes: missing features or mismatched feature ordering will return clear errors. Always send the same features and order used at training.
+
+## Repo layout (key files)
+
+- `train.py` — training script. Loads features, trains a scikit-learn model (RandomForest or similar), serializes `model.pkl` and `feature_columns.json`.
+- `feature_engineering.py` — code for transforming raw inputs into model features; used by training and by the API.
+- `features_data.csv` — sample/seed dataset used locally when feature store is not configured.
+- `raw_ingestion.py` / `weather_ingestion.py` (in `script/`) — optional ingestion helpers for raw data collection.
+- `app/api.py` — FastAPI app exposing prediction endpoints.
+- `app/streamlit_app.py` — interactive Streamlit demo that loads the model locally and shows predictions.
+- `feature_columns.json` — list/ordering of features the model expects. Keep this with the model.
+- `.github/workflows/daily_training.yml` — scheduled CI workflow that retrains the model periodically (CI config).
+
+## Feature engineering & model contract
+
+- The training pipeline writes `feature_columns.json` with the exact feature names and order used by the model. The API and any frontend must use the same ordering.
+- If you change feature engineering, make sure to re-run `train.py` and distribute the new `model.pkl` and `feature_columns.json` together.
+
+## Setup (Windows PowerShell)
+
+1) Create and activate a virtual environment (PowerShell):
 
 ```powershell
-python -m venv myenv; .\myenv\Scripts\Activate.ps1
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-2) Train and save a model (this will try Hopsworks first; if unavailable it will use `features_data.csv`):
+2) (Optional) If you plan to use the feature store or other remote services, configure credentials via environment variables. See the code comments in `train.py` for which env vars are read.
+
+## Local workflow — train / serve / demo
+
+1) Train the model (local CSV fallback):
 
 ```powershell
 python train.py
 ```
 
-This produces `model.pkl`, `feature_columns.json`, and re-writes `features_data.csv` in the repo root.
+This will create at least:
 
-3) Run the FastAPI prediction API:
+- `model.pkl` — serialized model (pickle)
+- `feature_columns.json` — JSON array of features and ordering
+
+2) Run the FastAPI service (from project root):
 
 ```powershell
-# From project root
 uvicorn app.api:app --reload --port 8000
 ```
 
 Endpoints:
-- `GET /health` — health check
-- `GET /predict/latest` — predict using the last row from `features_data.csv`
-- `POST /predict` — accept JSON body {"features": {"pm2_5": 12.3, ...}}
 
-4) Run the Streamlit dashboard:
+- `GET /health` — simple health check
+- `GET /predict/latest` — predict using the latest row from `features_data.csv` (quick demo)
+- `POST /predict` — body: {"features": {"feature_name": value, ...}}; returns prediction and metadata
+
+Example POST (PowerShell):
+
+```powershell
+$body = '{"features": {"pm2_5": 12.3, "temperature": 28.5, "humidity": 55}}'
+Invoke-RestMethod -Uri http://127.0.0.1:8000/predict -Method Post -Body $body -ContentType 'application/json'
+```
+
+3) Run the Streamlit demo (loads model locally):
 
 ```powershell
 streamlit run app/streamlit_app.py
 ```
 
-5) Run the Gradio demo:
+The Streamlit app is a fast way to explore recent rows and run single predictions without calling the API. For production separation, convert the UI to call the API instead of loading `model.pkl` directly.
 
-```powershell
-python app/gradio_app.py
-```
+## CI / scheduled retraining
 
-Notes & next steps:
-- The model expects the same set of features recorded in `feature_columns.json`. The training script writes that file.
-- If you plan to deploy, consider adding authentication to the API and locking down the Hopsworks credentials.
-- Optionally convert the Streamlit app to call the API (instead of loading local `model.pkl`) for a clearer separation between frontend and model service.
+- `.github/workflows/daily_training.yml` is configured to run scheduled training (daily). The action runs `train.py`, saves artifacts, and can be extended to publish model artifacts to a model registry or cloud storage.
+
+## Data handling & privacy
+
+- `features_data.csv` contains sample data for local development. If your real data contains PII or sensitive information, do not commit it to the repo. Use secure storage and environment-specific configs.
+
+## Tests and validation
+
+- There are no formal unit tests included by default. Recommended minimal tests:
+	- A unit test to verify `feature_engineering.py` transforms produce expected columns.
+	- A simple integration test to call `POST /predict` with expected input and assert output shape.
+
+## Troubleshooting / common issues
+
+- Missing `feature_columns.json` or mismatch: retrain using `python train.py` to regenerate the file.
+- Model file load errors (pickle): ensure Python and library versions are compatible with the environment used to save the model.
+- Port conflicts for API: change the port in the `uvicorn` command.
+
+## Development notes & future improvements
+
+- Convert the model artifact format to ONNX or a more portable format for cross-language serving.
+- Add a tests folder with pytest tests for feature engineering and API endpoints.
+- Add Dockerfiles for model service and UI for easier deployment.
+- Add API authentication and rate limiting for production readiness.
+
+## Files of interest (one-line descriptions)
+
+- `train.py` — orchestrates data load, feature engineering, training, and model export.
+- `feature_engineering.py` — feature transforms used for training and inference.
+- `features_data.csv` — local sample dataset used by training and demos.
+- `app/api.py` — FastAPI prediction service.
+- `app/streamlit_app.py` — demo UI for interactive exploration.
+- `.github/workflows/daily_training.yml` — scheduled retrain workflow.
+
+## How to contribute
+
+- Open issues for bugs and feature requests.
+- For code changes, create a feature branch, add tests where applicable, and open a pull request.
+
+## License
+
+This repository does not include a license file by default. Add a `LICENSE` with your chosen license (MIT, Apache-2.0, etc.) if you intend to open-source the project.
+
+## Quick completion summary
+
+- Train: `python train.py`
+- Serve: `uvicorn app.api:app --reload --port 8000`
+- Demo: `streamlit run app/streamlit_app.py`
+
+If you'd like, I can also:
+- add a small pytest suite for feature engineering and API sanity checks, or
+- create a `Makefile` / `scripts/` folder with common commands.
+
+Enjoy exploring AQI predictions!
