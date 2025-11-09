@@ -1,6 +1,6 @@
 # Pearls AQI Predictor
 
-A local-first project that trains a model to predict Air Quality Index (AQI) related targets from engineered features, exposes a prediction API, and provides simple frontends for exploration and demo (Streamlit). The codebase is structured to work locally and to be adaptable to production (feature store, CI scheduled retraining, and containerization).
+A local-first project for 10 Peals Shine Program that trains a model to predict Air Quality Index (AQI) related targets from engineered features, exposes a prediction API, and provides simple frontends for exploration and demo (Streamlit). The codebase is structured to work locally and to be adaptable to production (feature store, CI scheduled retraining, and containerization).
 
 ## Quick summary
 
@@ -8,13 +8,13 @@ A local-first project that trains a model to predict Air Quality Index (AQI) rel
 - Main components: data ingestion/feature engineering, training pipeline, FastAPI prediction service, Streamlit demo UI.
 - Intended users: data scientists experimenting locally, ML engineers preparing a small model service for deployment.
 
-## Contract (short)
+## Contract
 
 - Inputs: JSON or CSV rows containing the feature set documented in `feature_columns.json`.
 - Output: Predicted AQI (or related target) as a numeric value and optional metadata (model version, timestamp).
 - Error modes: missing features or mismatched feature ordering will return clear errors. Always send the same features and order used at training.
 
-## Repo layout (key files)
+## Repo layout 
 
 - `train.py` — training script. Loads features, trains a scikit-learn model (RandomForest or similar), serializes `model.pkl` and `feature_columns.json`.
 - `feature_engineering.py` — code for transforming raw inputs into model features; used by training and by the API.
@@ -108,7 +108,7 @@ The Streamlit app is a fast way to explore recent rows and run single prediction
 - Add Dockerfiles for model service and UI for easier deployment.
 - Add API authentication and rate limiting for production readiness.
 
-## Files of interest (one-line descriptions)
+## Files of interest
 
 - `train.py` — orchestrates data load, feature engineering, training, and model export.
 - `feature_engineering.py` — feature transforms used for training and inference.
@@ -117,14 +117,6 @@ The Streamlit app is a fast way to explore recent rows and run single prediction
 - `app/streamlit_app.py` — demo UI for interactive exploration.
 - `.github/workflows/daily_training.yml` — scheduled retrain workflow.
 
-## How to contribute
-
-- Open issues for bugs and feature requests.
-- For code changes, create a feature branch, add tests where applicable, and open a pull request.
-
-## License
-
-This repository does not include a license file by default. Add a `LICENSE` with your chosen license (MIT, Apache-2.0, etc.) if you intend to open-source the project.
 
 ## Quick completion summary
 
