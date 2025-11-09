@@ -2,6 +2,22 @@
 
 A local-first project for 10 Peals Shine Program that trains a model to predict Air Quality Index (AQI) related targets from engineered features, exposes a prediction API, and provides simple frontends for exploration and demo (Streamlit). The codebase is structured to work locally and to be adaptable to production (feature store, CI scheduled retraining, and containerization).
 
+## Visuals 
+
+Below are a few visual artifacts related to this project. Update captions as needed to better describe each image.
+
+- Figure 1 — Overview or dataset snapshot
+	![Figure 1](images/1.png)
+
+- Figure 2 — Feature importance or EDA plot
+	![Figure 2](images/2.png)
+
+- Figure 3 — Model evaluation (confusion matrix / residuals / predictions)
+	![Figure 3](images/3.png)
+
+- Figure 4 — Streamlit demo or UI screenshot
+	![Figure 4](images/4.png)
+
 ## Quick summary
 
 - Purpose: Train an ML model that predicts AQI-related target(s) from weather and pollutant features, and provide a lightweight API + UI for inference.
